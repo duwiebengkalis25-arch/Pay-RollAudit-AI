@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import PyPDF2
-import json
 import os
 import re
 from groq import Groq
@@ -198,7 +197,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# FUNGSI HELPER PEMBACA FILE & PROSES AI
+# FUNGSI HELPER PEMBACA FILE & PARSER AMAN
 # ==========================================
 def extract_payroll_data(file):
     if file.name.endswith(".csv"):
@@ -213,13 +212,49 @@ def extract_policy_text(file):
         return "\n".join([page.extract_text() for page in reader.pages])
     return file.read().decode("utf-8")
 
-def ekstrak_json_aman(teks_mentah):
-    # Membersihkan blok markdown ```json ... ``` jika ada
-    teks_bersih = re.sub(r"```json\s*|```", "", teks_mentah).strip()
-    match = re.search(r"\{.*\}", teks_bersih, re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-    return json.loads(teks_bersih)
+def parse_hasil_audit_aman(teks):
+    def ambil_bagian(tag_awal, tag_berikutnya, default_teks):
+        pola = rf"\[{tag_awal}\](.*?)(?=\[{tag_berikutnya}\]|$)"
+        m = re.search(pola, teks, re.DOTALL | re.IGNORECASE)
+        return m.group(1).strip() if m and m.group(1).strip() else default_teks
+
+    ringkasan_gaji = ambil_bagian("RINGKASAN_GAJI", "RINGKASAN_LEMBUR", "Audit komponen gaji pokok & tunjangan selesai.")
+    ringkasan_lembur = ambil_bagian("RINGKASAN_LEMBUR", "RINGKASAN_POTONGAN", "Audit komponen jam & upah lembur selesai.")
+    ringkasan_potongan = ambil_bagian("RINGKASAN_POTONGAN", "RINGKASAN_ANOMALI", "Audit komponen potongan & gaji bersih selesai.")
+    ringkasan_anomali = ambil_bagian("RINGKASAN_ANOMALI", "DAFTAR_TEMUAN", "Pemindaian pembayaran tidak sesuai & anomali selesai.")
+    blok_temuan = ambil_bagian("DAFTAR_TEMUAN", "LAPORAN_FINAL", "TIDAK_ADA")
+    laporan_final = ambil_bagian("LAPORAN_FINAL", "SELESAI", "Proses audit selesai dilaksanakan.")
+
+    daftar_temuan = []
+    if "TIDAK_ADA" not in blok_temuan.upper():
+        for baris in blok_temuan.splitlines():
+            baris = baris.strip().lstrip("-*• ")
+            if "|" in baris:
+                bagian = [b.strip() for b in baris.split("|")]
+                if len(bagian) >= 4:
+                    daftar_temuan.append({
+                        "karyawan_atau_id": bagian[0],
+                        "kategori_kesalahan": bagian[1],
+                        "detail_temuan": bagian[2],
+                        "rekomendasi": bagian[3]
+                    })
+                elif len(bagian) >= 2:
+                    daftar_temuan.append({
+                        "karyawan_atau_id": bagian[0],
+                        "kategori_kesalahan": "Temuan Audit",
+                        "detail_temuan": " - ".join(bagian[1:]),
+                        "rekomendasi": "Lakukan verifikasi dan penyesuaian pada sistem payroll."
+                    })
+
+    return {
+        "ringkasan_gaji_tunjangan": ringkasan_gaji,
+        "ringkasan_lembur": ringkasan_lembur,
+        "ringkasan_potongan": ringkasan_potongan,
+        "ringkasan_pembayaran_tidak_sesuai": ringkasan_anomali,
+        "terdapat_temuan": len(daftar_temuan) > 0,
+        "daftar_temuan": daftar_temuan,
+        "laporan_audit_final": laporan_final
+    }
 
 def jalankan_audit_ai(fokus_audit):
     df = st.session_state.df_payroll
@@ -239,29 +274,33 @@ def jalankan_audit_ai(fokus_audit):
     Anda adalah PayrollAudit AI, auditor internal ahli forensik penggajian.
     FOKUS AUDIT SAAT INI: {fokus_audit}
     
-    Tugas Anda mendeteksi secara teliti dan presisi seluruh baris data:
-    1. Kesalahan perhitungan Gaji Pokok & Tunjangan (penjumlahan komponen penghasilan bruto & kewajaran tunjangan).
-    2. Kesalahan perhitungan Lembur (jam lembur x tarif lembur dibandingkan dengan upah lembur dibayarkan, serta batas jam lembur).
-    3. Kesalahan perhitungan Potongan (potongan wajib %, potongan absensi, dan selisih pada Total Gaji Bersih Dibayar).
-    4. Kemungkinan Pembayaran Gaji yang Tidak Sesuai (duplikasi baris karyawan/NIK/nomor rekening, karyawan berstatus non-aktif/resign/cuti luar tanggungan yang tetap dibayar, atau gaji di atas batas wajar).
+    Periksa SETIAP BARIS data karyawan secara teliti terhadap:
+    1. Gaji Pokok & Tunjangan (kewajaran tunjangan & penjumlahan bruto).
+    2. Lembur (jam lembur x tarif lembur dibandingkan upah lembur dibayar, serta batas jam lembur).
+    3. Potongan (potongan wajib %, potongan absensi, dan perhitungan Total Gaji Bersih Dibayar).
+    4. Pembayaran Tidak Sesuai (duplikasi baris/NIK/rekening, karyawan non-aktif/resign/cuti luar tanggungan yang tetap dibayar, atau gaji melebihi batas wajar).
 
-    PENTING: Keluarkan HANYA objek JSON valid (tanpa teks pembuka atau penutup di luar kurung kurawal) dengan format persis:
-    {{
-        "ringkasan_gaji_tunjangan": "Ringkasan hasil audit komponen gaji pokok & tunjangan",
-        "ringkasan_lembur": "Ringkasan hasil audit perhitungan jam & upah lembur",
-        "ringkasan_potongan": "Ringkasan hasil audit komponen potongan & gaji bersih",
-        "ringkasan_pembayaran_tidak_sesuai": "Ringkasan hasil deteksi anomali, duplikasi, atau pembayaran tidak wajar",
-        "terdapat_temuan": true,
-        "daftar_temuan": [
-            {{
-                "karyawan_atau_id": "NIK - Nama Karyawan",
-                "kategori_kesalahan": "Salah Hitung Gaji / Salah Tunjangan / Salah Lembur / Salah Potongan / Pembayaran Tidak Sesuai",
-                "detail_temuan": "Penjelasan ringkas angka seharusnya vs dibayarkan beserta selisihnya",
-                "rekomendasi": "Tindakan koreksi yang disarankan"
-            }}
-        ],
-        "laporan_audit_final": "Kesimpulan menyeluruh laporan audit"
-    }}
+    Tulis hasil audit Anda PERSIS mengikuti struktur tag berikut (jangan gunakan JSON):
+
+    [RINGKASAN_GAJI]
+    Tulis ringkasan hasil pemeriksaan gaji pokok dan tunjangan di sini.
+
+    [RINGKASAN_LEMBUR]
+    Tulis ringkasan hasil pemeriksaan jam lembur dan upah lembur di sini.
+
+    [RINGKASAN_POTONGAN]
+    Tulis ringkasan hasil pemeriksaan potongan wajib, absensi, dan gaji bersih di sini.
+
+    [RINGKASAN_ANOMALI]
+    Tulis ringkasan hasil deteksi duplikasi rekening/NIK, status non-aktif, dan kewajaran gaji di sini.
+
+    [DAFTAR_TEMUAN]
+    Tulis setiap temuan kesalahan dalam 1 baris dengan format pemisah tanda garis tegak (|):
+    NIK - Nama Karyawan | Kategori Kesalahan | Penjelasan detail angka seharusnya vs dibayarkan beserta selisihnya | Rekomendasi perbaikan
+    (Jika tidak ada kesalahan sama sekali, tulis: TIDAK_ADA)
+
+    [LAPORAN_FINAL]
+    Tulis kesimpulan menyeluruh laporan audit final di sini.
     """
 
     user_prompt = f"{aturan_tambahan}\n\nDATA PAYROLL KARYAWAN:\n{payroll_csv_str}"
@@ -281,7 +320,7 @@ def jalankan_audit_ai(fokus_audit):
     except Exception:
         kandidat = daftar_model
 
-    hasil_json = None
+    hasil_parsed = None
     error_terakhir = None
     for nama_model in kandidat:
         try:
@@ -295,33 +334,27 @@ def jalankan_audit_ai(fokus_audit):
                 max_tokens=4096
             )
             konten = response.choices[0].message.content
-            hasil_json = ekstrak_json_aman(konten)
+            hasil_parsed = parse_hasil_audit_aman(konten)
             break
         except Exception as err:
             error_terakhir = err
             continue
 
-    if hasil_json is None:
+    if hasil_parsed is None:
         raise Exception(f"Semua model gagal dipanggil. Detail: {error_terakhir}")
 
-    return hasil_json
+    return hasil_parsed
 
 def tampilkan_hasil_audit(hasil, judul_laporan):
     st.divider()
     st.markdown("### ⚙️ Hasil Proses Analisis Audit AI")
     
-    ringkasan_gaji = hasil.get("ringkasan_gaji_tunjangan", "Data gaji pokok dan tunjangan telah diperiksa.")
-    ringkasan_lembur = hasil.get("ringkasan_lembur", "Perhitungan jam dan upah lembur telah diperiksa.")
-    ringkasan_potongan = hasil.get("ringkasan_potongan", "Komponen potongan wajib, absensi, dan gaji bersih telah diperiksa.")
-    ringkasan_anomali = hasil.get("ringkasan_pembayaran_tidak_sesuai", "Pemindaian duplikasi dan kewajaran pembayaran telah dijalankan.")
-    terdapat_temuan = hasil.get("terdapat_temuan", False)
-    daftar_temuan = hasil.get("daftar_temuan") or hasil.get("daftar_temuan_rekomendasi") or []
-    laporan_final = (
-        hasil.get("laporan_audit_final")
-        or hasil.get("kesimpulan_laporan_final")
-        or hasil.get("kesimpulan")
-        or "Audit telah selesai dijalankan. Silakan tinjau rincian temuan di atas untuk tindakan koreksi lebih lanjut."
-    )
+    ringkasan_gaji = hasil.get("ringkasan_gaji_tunjangan", "")
+    ringkasan_lembur = hasil.get("ringkasan_lembur", "")
+    ringkasan_potongan = hasil.get("ringkasan_potongan", "")
+    ringkasan_anomali = hasil.get("ringkasan_pembayaran_tidak_sesuai", "")
+    daftar_temuan = hasil.get("daftar_temuan", [])
+    laporan_final = hasil.get("laporan_audit_final", "")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -334,34 +367,33 @@ def tampilkan_hasil_audit(hasil, judul_laporan):
     st.divider()
     st.markdown("### 📋 Keputusan Audit & Laporan Final")
 
-    if terdapat_temuan or len(daftar_temuan) > 0:
+    if len(daftar_temuan) > 0:
         st.warning(f"⚠️ **Status Percabangan: TERDAPAT TEMUAN ({len(daftar_temuan)} Temuan Terdeteksi)**")
         st.subheader("📌 Rincian Temuan Kesalahan & Rekomendasi")
         for idx, item in enumerate(daftar_temuan, 1):
-            kategori = item.get("kategori_kesalahan", "Temuan Audit")
-            karyawan = item.get("karyawan_atau_id") or item.get("karyawan_atau_item") or f"Item #{idx}"
-            detail = item.get("detail_temuan") or item.get("jenis_kesalahan_risiko") or "-"
-            rekom = item.get("rekomendasi", "Lakukan verifikasi dan penyesuaian nominal pada sistem payroll.")
-
             st.markdown(f"""
                 <div class="card-box" style="border-left: 5px solid #ef4444;">
                     <span style="background:#fee2e2; color:#b91c1c; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:700;">
-                        {kategori}
+                        {item['kategori_kesalahan']}
                     </span>
-                    <h4 style="margin:8px 0 6px 0; color:#102a43;">Temuan #{idx} — {karyawan}</h4>
-                    <p style="margin-bottom:6px;"><b>Detail Kesalahan / Selisih:</b> {detail}</p>
-                    <p style="margin-bottom:0; color:#047857;"><b>Rekomendasi Perbaikan:</b> {rekom}</p>
+                    <h4 style="margin:8px 0 6px 0; color:#102a43;">Temuan #{idx} — {item['karyawan_atau_id']}</h4>
+                    <p style="margin-bottom:6px;"><b>Detail Kesalahan / Selisih:</b> {item['detail_temuan']}</p>
+                    <p style="margin-bottom:0; color:#047857;"><b>Rekomendasi Perbaikan:</b> {item['rekomendasi']}</p>
                 </div>
             """, unsafe_allow_html=True)
 
         st.subheader("📄 Laporan Audit Final (Disertai Rekomendasi)")
         st.error(laporan_final)
-        status_teks = "TERDAPAT TEMUAN KESALAHAN / PEMBAYARAN TIDAK SESUAI"
+        status_teks = f"TERDAPAT {len(daftar_temuan)} TEMUAN KESALAHAN / PEMBAYARAN TIDAK SESUAI"
     else:
         st.success("✅ **Status Percabangan: DATA DINYATAKAN SESUAI (Tidak Ada Masalah)**")
         st.subheader("📄 Laporan Audit Final (Status: Aman)")
         st.success(laporan_final)
         status_teks = "AMAN / DATA DINYATAKAN SESUAI"
+
+    rincian_txt = ""
+    for idx, item in enumerate(daftar_temuan, 1):
+        rincian_txt += f"\n{idx}. [{item['kategori_kesalahan']}] {item['karyawan_atau_id']}\n   - Temuan     : {item['detail_temuan']}\n   - Rekomendasi: {item['rekomendasi']}\n"
 
     laporan_txt = f"""====================================================
 {judul_laporan.upper()} - PAYROLLAUDIT AI
@@ -381,7 +413,10 @@ Status Akhir  : {status_teks}
 4. DETEKSI PEMBAYARAN TIDAK SESUAI
 {ringkasan_anomali}
 
-5. KESIMPULAN LAPORAN AUDIT FINAL
+5. DAFTAR TEMUAN & REKOMENDASI
+{rincian_txt if rincian_txt else "Tidak ada temuan kesalahan."}
+
+6. KESIMPULAN LAPORAN AUDIT FINAL
 {laporan_final}
 ====================================================
 """
