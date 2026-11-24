@@ -36,8 +36,8 @@ def apply_custom_style():
         }
         /* Perbaikan Kontras Kotak Alert (Data Aktif / Belum Unggah) di Sidebar */
         [data-testid="stSidebar"] [data-testid="stAlert"] {
-            background-color: rgba(255, 255, 255, 0.12) !important;
-            border: 1px solid rgba(255, 255, 255, 0.25) !important;
+            background-color: rgba(255, 255, 255, 0.14) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
             border-radius: 10px !important;
         }
         [data-testid="stSidebar"] [data-testid="stAlert"] p {
@@ -51,11 +51,9 @@ def apply_custom_style():
             border: 1px solid #ef4444 !important;
             border-radius: 10px !important;
             font-weight: 600 !important;
-            transition: all 0.2s ease;
         }
         [data-testid="stSidebar"] .stButton > button:hover {
             background-color: #b91c1c !important;
-            border-color: #fca5a5 !important;
         }
         [data-testid="stSidebar"] .stButton > button p {
             color: #ffffff !important;
@@ -416,9 +414,166 @@ def tampilkan_hasil_audit(hasil, judul_laporan):
 
         st.subheader("📄 Laporan Audit Final (Disertai Rekomendasi)")
         st.error(laporan_final)
-        status_teks = f"TERDAPAT {len(daftar_temuan)} TEMUAN KESALAHAN / PEMBAYARAN TIDAK SESUAI"
+        status_teks = "TERDAPAT TEMUAN KESALAHAN / PEMBAYARAN TIDAK SESUAI"
     else:
         st.success("✅ **Status Percabangan: DATA DINYATAKAN SESUAI (Tidak Ada Masalah)**")
         st.subheader("📄 Laporan Audit Final (Status: Aman)")
         st.success(laporan_final)
-        status_teks =
+        status_teks = "AMAN / DATA DINYATAKAN SESUAI"
+
+    rincian_txt = ""
+    for idx, item in enumerate(daftar_temuan, 1):
+        rincian_txt += f"\n{idx}. [{item['kategori_kesalahan']}] {item['karyawan_atau_id']}\n   - Temuan     : {item['detail_temuan']}\n   - Rekomendasi: {item['rekomendasi']}\n"
+
+    laporan_txt = f"""====================================================
+{judul_laporan.upper()} - PAYROLLAUDIT AI
+====================================================
+Auditor       : {st.session_state.username}
+Status Akhir  : {status_teks}
+
+1. AUDIT GAJI POKOK & TUNJANGAN
+{ringkasan_gaji}
+
+2. AUDIT PERHITUNGAN LEMBUR
+{ringkasan_lembur}
+
+3. AUDIT POTONGAN & GAJI BERSIH
+{ringkasan_potongan}
+
+4. DETEKSI PEMBAYARAN TIDAK SESUAI
+{ringkasan_anomali}
+
+5. DAFTAR TEMUAN & REKOMENDASI
+{rincian_txt if rincian_txt else "Tidak ada temuan kesalahan."}
+
+6. KESIMPULAN LAPORAN AUDIT FINAL
+{laporan_final}
+====================================================
+"""
+    st.download_button(
+        label="📥 Unduh Laporan Audit Final (.txt)",
+        data=laporan_txt,
+        file_name="Laporan_Audit_Payroll_Final.txt",
+        mime="text/plain"
+    )
+
+# ==========================================
+# KONTEN HALAMAN BERDASARKAN MENU SIDEBAR
+# ==========================================
+
+if menu_pilihan == "1. Input Data & Audit Menyeluruh":
+    st.markdown("### 📂 Input Data & Audit Menyeluruh (Sesuai Bagan Alur)")
+    col1, col2 = st.columns(2)
+    with col1:
+        payroll_file = st.file_uploader("📊 Unggah Data Gaji, Tunjangan, Lembur & Potongan (Excel / CSV)", type=["xlsx", "xls", "csv"])
+    with col2:
+        policy_file = st.file_uploader("📑 Unggah Dokumen Kebijakan HR / Aturan Penggajian (PDF / TXT)", type=["pdf", "txt"])
+
+    if payroll_file is not None:
+        st.session_state.df_payroll = extract_payroll_data(payroll_file)
+    if policy_file is not None:
+        st.session_state.policy_text = extract_policy_text(policy_file)
+
+    if st.session_state.df_payroll is not None:
+        with st.expander("👁️ Preview Data Penggajian Aktif", expanded=True):
+            st.dataframe(st.session_state.df_payroll, use_container_width=True)
+
+        if st.button("🚀 Mulai Proses Audit Menyeluruh", type="primary"):
+            with st.spinner("PayrollAudit AI sedang memeriksa seluruh komponen gaji, tunjangan, lembur, potongan & anomali..."):
+                try:
+                    hasil = jalankan_audit_ai("Audit menyeluruh seluruh komponen gaji, tunjangan, lembur, potongan, dan kepatuhan pembayaran.")
+                    st.session_state.hasil_menyeluruh = hasil
+                except Exception as e:
+                    st.error(f"Terjadi kesalahan koneksi AI: {e}")
+
+        if "hasil_menyeluruh" in st.session_state:
+            tampilkan_hasil_audit(st.session_state.hasil_menyeluruh, "Laporan Audit Menyeluruh")
+
+elif menu_pilihan == "2. Audit Perhitungan (Gaji, Tunjangan, Lembur & Potongan)":
+    st.markdown("### 🧮 Audit Akurasi Perhitungan Gaji, Tunjangan, Lembur & Potongan")
+    st.caption("Menu ini memfokuskan pemeriksaan pada rumus matematika dan selisih nominal setiap komponen penghasilan dan pengurang gaji.")
+    
+    if st.session_state.df_payroll is None:
+        st.warning("⚠️ Silakan unggah terlebih dahulu file data gaji pada **Menu 1 (Input Data & Audit Menyeluruh)**.")
+    else:
+        komponen_fokus = st.multiselect(
+            "Pilih komponen spesifik yang ingin diaudit secara mendalam:",
+            ["Gaji Pokok", "Tunjangan (Jabatan/Makan/Transport)", "Perhitungan Jam & Upah Lembur", "Potongan (BPJS, PPh 21, Absensi, Kasbon)", "Total Gaji Bersih (Take Home Pay)"],
+            default=["Gaji Pokok", "Tunjangan (Jabatan/Makan/Transport)", "Perhitungan Jam & Upah Lembur", "Potongan (BPJS, PPh 21, Absensi, Kasbon)", "Total Gaji Bersih (Take Home Pay)"]
+        )
+        
+        if st.button("🔍 Jalankan Audit Perhitungan Komponen", type="primary"):
+            with st.spinner("Mengaudit rumus perhitungan gaji, tunjangan, lembur, dan potongan..."):
+                try:
+                    fokus = f"Audit presisi matematis khusus pada komponen: {', '.join(komponen_fokus)}. Hitung ulang baris demi baris dan temukan selisih sekecil apa pun."
+                    hasil = jalankan_audit_ai(fokus)
+                    st.session_state.hasil_komponen = hasil
+                except Exception as e:
+                    st.error(f"Terjadi kesalahan: {e}")
+
+        if "hasil_komponen" in st.session_state:
+            tampilkan_hasil_audit(st.session_state.hasil_komponen, "Laporan Audit Perhitungan Komponen")
+
+elif menu_pilihan == "3. Deteksi Pembayaran Tidak Sesuai & Anomali":
+    st.markdown("### 🚨 Deteksi Kemungkinan Pembayaran Gaji Tidak Sesuai & Anomali")
+    st.caption("Mendeteksi duplikasi data karyawan, nomor rekening ganda, pembayaran karyawan non-aktif/resign, serta nominal di luar kewajaran jabatan.")
+    
+    if st.session_state.df_payroll is None:
+        st.warning("⚠️ Silakan unggah terlebih dahulu file data gaji pada **Menu 1 (Input Data & Audit Menyeluruh)**.")
+    else:
+        cek_anomali = st.multiselect(
+            "Pilih jenis indikator pembayaran tidak sesuai yang akan dipindai:",
+            [
+                "Duplikasi Nama / NIK / Nomor Rekening (Gaji Ganda)",
+                "Pembayaran pada Karyawan Berstatus Non-Aktif / Resign / Cuti di Luar Tanggungan",
+                "Lonjakan Gaji / Tunjangan Tidak Wajar (Outlier)",
+                "Ketidaksesuaian Gaji dengan Golongan / Jabatan / Kehadiran"
+            ],
+            default=[
+                "Duplikasi Nama / NIK / Nomor Rekening (Gaji Ganda)",
+                "Pembayaran pada Karyawan Berstatus Non-Aktif / Resign / Cuti di Luar Tanggungan",
+                "Lonjakan Gaji / Tunjangan Tidak Wajar (Outlier)",
+                "Ketidaksesuaian Gaji dengan Golongan / Jabatan / Kehadiran"
+            ]
+        )
+
+        if st.button("🛡️ Pindai Pembayaran Tidak Sesuai", type="primary"):
+            with st.spinner("Memindai indikasi anomali, duplikasi, dan pembayaran gaji tidak sesuai..."):
+                try:
+                    fokus = f"Audit forensik deteksi pembayaran tidak sesuai untuk indikator: {', '.join(cek_anomali)}."
+                    hasil = jalankan_audit_ai(fokus)
+                    st.session_state.hasil_anomali = hasil
+                except Exception as e:
+                    st.error(f"Terjadi kesalahan: {e}")
+
+        if "hasil_anomali" in st.session_state:
+            tampilkan_hasil_audit(st.session_state.hasil_anomali, "Laporan Deteksi Pembayaran Tidak Sesuai")
+
+elif menu_pilihan == "4. Pengaturan Parameter & Kebijakan Audit":
+    st.markdown("### ⚙️ Pengaturan Parameter & Standar Aturan Audit")
+    st.caption("Tentukan acuan tarif lembur, persentase potongan, dan batas kewajaran gaji yang akan digunakan AI sebagai dasar pemeriksaan.")
+    
+    with st.form("form_parameter"):
+        c1, c2 = st.columns(2)
+        with c1:
+            tarif_lembur = st.number_input("Tarif Lembur Standar per Jam (Rp)", min_value=0, value=st.session_state.param_aturan["tarif_lembur"], step=5000)
+            batas_gaji = st.number_input("Batas Kewajaran Gaji Maksimal per Bulan (Rp)", min_value=0, value=st.session_state.param_aturan["batas_gaji_maks"], step=1000000)
+        with c2:
+            persen_potongan = st.number_input("Standar Persentase Potongan Wajib (%)", min_value=0.0, max_value=100.0, value=st.session_state.param_aturan["persen_potongan_wajib"], step=0.5)
+            toleransi = st.number_input("Batas Toleransi Selisih Pembulatan (Rp)", min_value=0, value=st.session_state.param_aturan["toleransi_selisih"], step=500)
+            
+        catatan_kebijakan = st.text_area(
+            "Aturan / Kebijakan Khusus Perusahaan (Opsional)", 
+            value=st.session_state.policy_text,
+            height=120
+        )
+        
+        if st.form_submit_button("💾 Simpan Parameter Audit", type="primary"):
+            st.session_state.param_aturan = {
+                "tarif_lembur": tarif_lembur,
+                "persen_potongan_wajib": persen_potongan,
+                "batas_gaji_maks": batas_gaji,
+                "toleransi_selisih": toleransi
+            }
+            st.session_state.policy_text = catatan_kebijakan
+            st.success("✅ Parameter dan aturan audit berhasil diperbarui! Silakan jalankan proses audit di menu 1, 2, atau 3.")
