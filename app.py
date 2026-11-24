@@ -9,29 +9,139 @@ from groq import Groq
 st.set_page_config(page_title="PayrollAudit AI", page_icon="🤖", layout="wide")
 
 # ==========================================
+# CUSTOM CSS UNTUK TAMPILAN MODERN & ELEGAN
+# ==========================================
+def apply_custom_style():
+    st.markdown("""
+        <style>
+        /* Latar belakang utama dengan gradasi biru-abu lembut */
+        .stApp {
+            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+            color: #102a43;
+        }
+
+        /* Menyembunyikan header default Streamlit yang kosong agar lebih bersih */
+        header[data-testid="stHeader"] {
+            background-color: rgba(240, 244, 248, 0.8);
+            backdrop-filter: blur(8px);
+        }
+
+        /* Banner Header Utama (Selaras dengan bagan alur Navy Blue & Emas) */
+        .main-banner {
+            background: linear-gradient(90deg, #0a2540 0%, #103c68 100%);
+            padding: 2rem 2.5rem;
+            border-radius: 16px;
+            color: white;
+            box-shadow: 0 10px 25px rgba(10, 37, 64, 0.15);
+            margin-bottom: 1.5rem;
+            border-left: 6px solid #f59e0b;
+        }
+        .main-banner h1 {
+            margin: 0;
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+        }
+        .main-banner span.ai-accent {
+            color: #fbbf24;
+        }
+        .main-banner p {
+            margin: 0.4rem 0 0 0;
+            font-size: 1rem;
+            color: #cbd5e1;
+        }
+
+        /* Kartu Kontainer Putih Bersih */
+        .card-box {
+            background-color: #ffffff;
+            padding: 1.5rem;
+            border-radius: 14px;
+            box-shadow: 0 4px 15px rgba(16, 42, 67, 0.06);
+            border: 1px solid #e2e8f0;
+            margin-bottom: 1rem;
+        }
+
+        /* Styling Area File Uploader */
+        [data-testid="stFileUploader"] {
+            background-color: #ffffff;
+            padding: 1.2rem;
+            border-radius: 12px;
+            border: 1.5px dashed #3b82f6;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08);
+            transition: all 0.3s ease;
+        }
+        [data-testid="stFileUploader"]:hover {
+            border-color: #1d4ed8;
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.15);
+        }
+
+        /* Styling Tombol Utama */
+        .stButton > button[kind="primary"] {
+            background: linear-gradient(90deg, #0284c7 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 0.6rem 1.8rem;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(29, 78, 216, 0.25);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .stButton > button[kind="primary"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(29, 78, 216, 0.35);
+        }
+
+        /* Styling Kotak Form Login */
+        [data-testid="stForm"] {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(10, 37, 64, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Styling Kotak Alert / Info */
+        [data-testid="stAlert"] {
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+apply_custom_style()
+
+# ==========================================
 # TAHAP 1: MULAI & LOGIN PENGGUNA
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 def login_page():
-    st.title("🤖 PayrollAudit AI")
-    st.subheader("Sistem Audit Gaji dan Tunjangan Karyawan")
-    st.info("Silakan login untuk mengakses sistem audit.")
-    
-    with st.form("login_form"):
-        username = st.text_input("Username Auditor", placeholder="contoh: auditor_hr")
-        password = st.text_input("Password", type="password", placeholder="contoh: admin123")
-        submit = st.form_submit_button("Masuk ke Sistem")
+    col_l, col_center, col_r = st.columns([1, 2, 1])
+    with col_center:
+        st.markdown("""
+            <div class="main-banner" style="text-align: center; border-left: none; border-bottom: 5px solid #f59e0b;">
+                <h1>🤖 PayrollAudit <span class="ai-accent">AI</span></h1>
+                <p>Sistem Audit Gaji dan Tunjangan Karyawan</p>
+            </div>
+        """, unsafe_allow_html=True)
         
-        if submit:
-            # Simulasi kredensial login (bisa disesuaikan)
-            if username == "admin" and password == "audit123":
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.rerun()
-            else:
-                st.error("Username atau password salah! (Gunakan: admin / audit123)")
+        with st.form("login_form"):
+            st.markdown("### 🔐 Akses Sistem Auditor")
+            st.caption("Silakan masukkan kredensial Anda untuk memulai sesi audit.")
+            username = st.text_input("Username Auditor", placeholder="Masukkan username (admin)")
+            password = st.text_input("Password", type="password", placeholder="Masukkan password")
+            st.write("")
+            submit = st.form_submit_button("Masuk ke Sistem", type="primary", use_container_width=True)
+            
+            if submit:
+                if username == "admin" and password == "audit123":
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.rerun()
+                else:
+                    st.error("Username atau password salah! (Gunakan: admin / audit123)")
 
 if not st.session_state.logged_in:
     login_page()
@@ -51,37 +161,47 @@ if not api_key:
 
 client = Groq(api_key=api_key)
 
-# Header Dashboard setelah Login
-col_header, col_logout = st.columns([8, 1])
-with col_header:
-    st.title("🤖 PayrollAudit AI")
-    st.caption(f"Sistem Audit Gaji dan Tunjangan Karyawan | Auditor aktif: **{st.session_state.username}**")
+# ==========================================
+# HEADER DASHBOARD SETELAH LOGIN
+# ==========================================
+st.markdown(f"""
+    <div class="main-banner">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <h1>🤖 PayrollAudit <span class="ai-accent">AI</span></h1>
+                <p>Sistem Audit Gaji dan Tunjangan Karyawan • Auditor Aktif: <b>{st.session_state.username}</b></p>
+            </div>
+            <div style="background: rgba(255,255,255,0.12); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; color: #fbbf24; font-weight: 600;">
+                ● Status Engine: Groq AI Aktif
+            </div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+col_space, col_logout = st.columns([9, 1])
 with col_logout:
-    if st.button("Logout"):
+    if st.button("🚪 Logout", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
-
-st.divider()
 
 # ==========================================
 # TAHAP 2: INPUT DATA (GAJI, TUNJANGAN & DOKUMEN PENDUKUNG)
 # ==========================================
-st.header("1. Input Data Audit")
+st.markdown("### 📂 1. Input Data Audit")
 col1, col2 = st.columns(2)
 
 with col1:
     payroll_file = st.file_uploader(
-        "Unggah Data Gaji & Tunjangan (Excel / CSV)", 
+        "📊 Unggah Data Gaji & Tunjangan (Excel / CSV)", 
         type=["xlsx", "xls", "csv"]
     )
 
 with col2:
     policy_file = st.file_uploader(
-        "Unggah Dokumen Pendukung / Kebijakan HR (PDF / TXT - Opsional)", 
+        "📑 Unggah Dokumen Pendukung / Kebijakan HR (PDF / TXT - Opsional)", 
         type=["pdf", "txt"]
     )
 
-# Fungsi helper untuk membaca isi file
 def extract_payroll_data(file):
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
@@ -103,9 +223,10 @@ def extract_policy_text(file):
 
 if payroll_file is not None:
     df_payroll = extract_payroll_data(payroll_file)
-    with st.expander("Preview Data Gaji & Tunjangan yang Diunggah"):
+    with st.expander("👁️ Preview Data Gaji & Tunjangan yang Diunggah", expanded=True):
         st.dataframe(df_payroll, use_container_width=True)
 
+    st.write("")
     # ==========================================
     # TAHAP 3: PAYROLLAUDIT AI (PROSES AUDIT OLEH AI)
     # ==========================================
@@ -156,7 +277,7 @@ if payroll_file is not None:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
-                    temperature=0.1, # Rendah agar analisis audit konsisten dan akurat
+                    temperature=0.1,
                     response_format={"type": "json_object"}
                 )
 
@@ -172,9 +293,8 @@ if payroll_file is not None:
 if "hasil_audit" in st.session_state:
     hasil = st.session_state.hasil_audit
     st.divider()
-    st.header("2. Hasil Proses Audit oleh AI")
+    st.markdown("### ⚙️ 2. Hasil Proses Audit oleh AI")
 
-    # Menampilkan 4 Kotak Proses Audit di sisi kanan bagan alur
     c1, c2 = st.columns(2)
     with c1:
         st.info(f"**✔️ Validasi Data (Keakuratan & Kelengkapan):**\n\n{hasil['validasi_data']}")
@@ -184,26 +304,26 @@ if "hasil_audit" in st.session_state:
         st.info(f"**📊 Evaluasi Kepatuhan (Regulasi & Kebijakan):**\n\n{hasil['evaluasi_kepatuhan']}")
 
     st.divider()
-    st.header("3. Keputusan Audit & Laporan Final")
+    st.markdown("### 📋 3. Keputusan Audit & Laporan Final")
 
-    # PERCABANGAN: TERDAPAT TEMUAN? (YA / TIDAK)
     if hasil["terdapat_temuan"]:
-        # JALUR "YA" (Kanan pada bagan alur)
         st.warning("⚠️ **Status Percabangan: TERDAPAT TEMUAN (Ya)**")
         
         st.subheader("📌 Temuan & Rekomendasi (Kesalahan / Risiko)")
         for idx, item in enumerate(hasil["daftar_temuan_rekomendasi"], 1):
-            with st.container(border=True):
-                st.markdown(f"**Temuan #{idx} — {item['karyawan_atau_item']}**")
-                st.markdown(f"- **Kesalahan / Risiko:** {item['jenis_kesalahan_risiko']}")
-                st.markdown(f"- **Rekomendasi Perbaikan:** {item['rekomendasi']}")
+            st.markdown(f"""
+                <div class="card-box" style="border-left: 5px solid #f59e0b;">
+                    <h4 style="margin-top:0; color:#b45309;">Temuan #{idx} — {item['karyawan_atau_item']}</h4>
+                    <p style="margin-bottom:6px;"><b>Kesalahan / Risiko:</b> {item['jenis_kesalahan_risiko']}</p>
+                    <p style="margin-bottom:0;"><b>Rekomendasi Perbaikan:</b> {item['rekomendasi']}</p>
+                </div>
+            """, unsafe_allow_html=True)
 
         st.subheader("📄 Laporan Audit Final (Disertai Rekomendasi)")
         st.error(hasil["kesimpulan_laporan_final"])
         status_teks = "DITEMUKAN TEMUAN / RISIKO (DISERTAI REKOMENDASI)"
 
     else:
-        # JALUR "TIDAK" (Kiri pada bagan alur)
         st.success("✅ **Status Percabangan: DATA DINYATAKAN SESUAI (Tidak Ada Masalah)**")
         
         st.subheader("📄 Laporan Audit Final (Status: Aman)")
