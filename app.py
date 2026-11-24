@@ -182,7 +182,7 @@ with st.sidebar:
 # ==========================================
 # HEADER BANNER UTAMA
 # ==========================================
-st.markdown(f"""
+st.markdown("""
     <div class="main-banner">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
             <div>
@@ -256,45 +256,43 @@ def jalankan_audit_ai(fokus_audit):
 
     user_prompt = f"{aturan_tambahan}\n\nDATA PAYROLL KARYAWAN:\n{payroll_csv_str}"
 
-   # Daftar model aktif Groq yang mendukung analisis terstruktur (JSON)
-daftar_model = [
-    "llama-3.1-8b-instant",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "qwen/qwen3-32b",
-    "openai/gpt-oss-120b"
-]
-
-# Mengambil model yang aktif langsung dari akun Groq Anda jika tersedia
-try:
-    model_tersedia = [m.id for m in client.models.list().data]
-    kandidat = [m for m in daftar_model if m in model_tersedia]
-    if not kandidat and model_tersedia:
-        kandidat = [m for m in model_tersedia if "whisper" not in m and "guard" not in m]
-except Exception:
-    kandidat = daftar_model
-
-response = None
-error_terakhir = None
-for nama_model in kandidat:
+    daftar_model = [
+        "llama-3.1-8b-instant",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "qwen/qwen3-32b",
+        "openai/gpt-oss-120b"
+    ]
+    
     try:
-        response = client.chat.completions.create(
-            model=nama_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        break
-    except Exception as err:
-        error_terakhir = err
-        continue
+        model_tersedia = [m.id for m in client.models.list().data]
+        kandidat = [m for m in daftar_model if m in model_tersedia]
+        if not kandidat and model_tersedia:
+            kandidat = [m for m in model_tersedia if "whisper" not in m and "guard" not in m]
+    except Exception:
+        kandidat = daftar_model
 
-if response is None:
-    raise Exception(f"Semua model gagal dipanggil. Detail: {error_terakhir}")
+    response = None
+    error_terakhir = None
+    for nama_model in kandidat:
+        try:
+            response = client.chat.completions.create(
+                model=nama_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            break
+        except Exception as err:
+            error_terakhir = err
+            continue
 
-return json.loads(response.choices[0].message.content)
+    if response is None:
+        raise Exception(f"Semua model gagal dipanggil. Detail: {error_terakhir}")
+
+    return json.loads(response.choices[0].message.content)
 
 def tampilkan_hasil_audit(hasil, judul_laporan):
     st.divider()
@@ -335,7 +333,6 @@ def tampilkan_hasil_audit(hasil, judul_laporan):
         st.success(hasil["laporan_audit_final"])
         status_teks = "AMAN / DATA DINYATAKAN SESUAI"
 
-    # Tombol Unduh Laporan
     laporan_txt = f"""====================================================
 {judul_laporan.upper()} - PAYROLLAUDIT AI
 ====================================================
@@ -369,7 +366,6 @@ Status Akhir  : {status_teks}
 # KONTEN HALAMAN BERDASARKAN MENU SIDEBAR
 # ==========================================
 
-# --- MENU 1: INPUT DATA & AUDIT MENYELURUH ---
 if menu_pilihan == "1. Input Data & Audit Menyeluruh":
     st.markdown("### 📂 Input Data & Audit Menyeluruh (Sesuai Bagan Alur)")
     col1, col2 = st.columns(2)
@@ -398,7 +394,6 @@ if menu_pilihan == "1. Input Data & Audit Menyeluruh":
         if "hasil_menyeluruh" in st.session_state:
             tampilkan_hasil_audit(st.session_state.hasil_menyeluruh, "Laporan Audit Menyeluruh")
 
-# --- MENU 2: AUDIT RINCIAN KOMPONEN ---
 elif menu_pilihan == "2. Audit Perhitungan (Gaji, Tunjangan, Lembur & Potongan)":
     st.markdown("### 🧮 Audit Akurasi Perhitungan Gaji, Tunjangan, Lembur & Potongan")
     st.caption("Menu ini memfokuskan pemeriksaan pada rumus matematika dan selisih nominal setiap komponen penghasilan dan pengurang gaji.")
@@ -424,7 +419,6 @@ elif menu_pilihan == "2. Audit Perhitungan (Gaji, Tunjangan, Lembur & Potongan)"
         if "hasil_komponen" in st.session_state:
             tampilkan_hasil_audit(st.session_state.hasil_komponen, "Laporan Audit Perhitungan Komponen")
 
-# --- MENU 3: DETEKSI PEMBAYARAN TIDAK SESUAI ---
 elif menu_pilihan == "3. Deteksi Pembayaran Tidak Sesuai & Anomali":
     st.markdown("### 🚨 Deteksi Kemungkinan Pembayaran Gaji Tidak Sesuai & Anomali")
     st.caption("Mendeteksi duplikasi data karyawan, nomor rekening ganda, pembayaran karyawan non-aktif/resign, serta nominal di luar kewajaran jabatan.")
@@ -460,7 +454,6 @@ elif menu_pilihan == "3. Deteksi Pembayaran Tidak Sesuai & Anomali":
         if "hasil_anomali" in st.session_state:
             tampilkan_hasil_audit(st.session_state.hasil_anomali, "Laporan Deteksi Pembayaran Tidak Sesuai")
 
-# --- MENU 4: PENGATURAN PARAMETER & KEBIJAKAN AUDIT ---
 elif menu_pilihan == "4. Pengaturan Parameter & Kebijakan Audit":
     st.markdown("### ⚙️ Pengaturan Parameter & Standar Aturan Audit")
     st.caption("Tentukan acuan tarif lembur, persentase potongan, dan batas kewajaran gaji yang akan digunakan AI sebagai dasar pemeriksaan.")
