@@ -1,6 +1,5 @@
-[theme]
-primaryColor = "#0284c7"
-backgroundColor = "#f0f4f8"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#102a43"
-font = "sans serif"
+streamlit
+groq
+pandas
+openpyxl
+PyPDF2
