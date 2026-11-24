@@ -3,6 +3,7 @@ import pandas as pd
 import PyPDF2
 import json
 import os
+import re
 from groq import Groq
 
 # Konfigurasi Halaman
@@ -212,6 +213,14 @@ def extract_policy_text(file):
         return "\n".join([page.extract_text() for page in reader.pages])
     return file.read().decode("utf-8")
 
+def ekstrak_json_aman(teks_mentah):
+    # Membersihkan blok markdown ```json ... ``` jika ada
+    teks_bersih = re.sub(r"```json\s*|```", "", teks_mentah).strip()
+    match = re.search(r"\{.*\}", teks_bersih, re.DOTALL)
+    if match:
+        return json.loads(match.group(0))
+    return json.loads(teks_bersih)
+
 def jalankan_audit_ai(fokus_audit):
     df = st.session_state.df_payroll
     payroll_csv_str = df.to_csv(index=False)
@@ -230,30 +239,29 @@ def jalankan_audit_ai(fokus_audit):
     Anda adalah PayrollAudit AI, auditor internal ahli forensik penggajian.
     FOKUS AUDIT SAAT INI: {fokus_audit}
     
-    Tugas Anda mendeteksi secara teliti dan presisi:
-    1. Kesalahan perhitungan Gaji Pokok & Tunjangan (penjumlahan komponen penghasilan bruto).
-    2. Kesalahan perhitungan Lembur (jam lembur x tarif lembur dibandingkan dengan upah lembur yang dibayarkan).
-    3. Kesalahan perhitungan Potongan (keterlambatan, absensi, pinjaman, BPJS/PPh, dan pengurangan ke Gaji Bersih/Take Home Pay).
-    4. Kemungkinan Pembayaran Gaji yang Tidak Sesuai (duplikasi nama/NIK/rekening, karyawan berstatus non-aktif/resign tapi masih digaji, lonjakan gaji tidak wajar, atau pembayaran tidak sesuai jabatan/kebijakan).
+    Tugas Anda mendeteksi secara teliti dan presisi seluruh baris data:
+    1. Kesalahan perhitungan Gaji Pokok & Tunjangan (penjumlahan komponen penghasilan bruto & kewajaran tunjangan).
+    2. Kesalahan perhitungan Lembur (jam lembur x tarif lembur dibandingkan dengan upah lembur dibayarkan, serta batas jam lembur).
+    3. Kesalahan perhitungan Potongan (potongan wajib %, potongan absensi, dan selisih pada Total Gaji Bersih Dibayar).
+    4. Kemungkinan Pembayaran Gaji yang Tidak Sesuai (duplikasi baris karyawan/NIK/nomor rekening, karyawan berstatus non-aktif/resign/cuti luar tanggungan yang tetap dibayar, atau gaji di atas batas wajar).
 
-    WAJIB merespons HANYA dalam format JSON murni dengan struktur persis seperti ini:
+    PENTING: Keluarkan HANYA objek JSON valid (tanpa teks pembuka atau penutup di luar kurung kurawal) dengan format persis:
     {{
-        "ringkasan_gaji_tunjangan": "Hasil audit komponen gaji pokok & tunjangan",
-        "ringkasan_lembur": "Hasil audit perhitungan jam & upah lembur",
-        "ringkasan_potongan": "Hasil audit komponen potongan & gaji bersih",
-        "ringkasan_pembayaran_tidak_sesuai": "Hasil deteksi anomali, duplikasi, atau pembayaran tidak wajar",
+        "ringkasan_gaji_tunjangan": "Ringkasan hasil audit komponen gaji pokok & tunjangan",
+        "ringkasan_lembur": "Ringkasan hasil audit perhitungan jam & upah lembur",
+        "ringkasan_potongan": "Ringkasan hasil audit komponen potongan & gaji bersih",
+        "ringkasan_pembayaran_tidak_sesuai": "Ringkasan hasil deteksi anomali, duplikasi, atau pembayaran tidak wajar",
         "terdapat_temuan": true,
         "daftar_temuan": [
             {{
-                "karyawan_atau_id": "Nama / ID Karyawan",
+                "karyawan_atau_id": "NIK - Nama Karyawan",
                 "kategori_kesalahan": "Salah Hitung Gaji / Salah Tunjangan / Salah Lembur / Salah Potongan / Pembayaran Tidak Sesuai",
-                "detail_temuan": "Penjelasan angka seharusnya vs angka dibayarkan beserta selisihnya",
-                "rekomendasi": "Tindakan koreksi yang harus dilakukan"
+                "detail_temuan": "Penjelasan ringkas angka seharusnya vs dibayarkan beserta selisihnya",
+                "rekomendasi": "Tindakan koreksi yang disarankan"
             }}
         ],
         "laporan_audit_final": "Kesimpulan menyeluruh laporan audit"
     }}
-    Catatan: Jika tidak ditemukan kesalahan sama sekali, set "terdapat_temuan": false dan "daftar_temuan": [].
     """
 
     user_prompt = f"{aturan_tambahan}\n\nDATA PAYROLL KARYAWAN:\n{payroll_csv_str}"
@@ -269,11 +277,11 @@ def jalankan_audit_ai(fokus_audit):
         model_tersedia = [m.id for m in client.models.list().data]
         kandidat = [m for m in daftar_model if m in model_tersedia]
         if not kandidat and model_tersedia:
-            kandidat = [m for m in model_tersedia if "whisper" not in m and "guard" not in m]
+            kandidat = [m for m in model_tersedia if "whisper" not in m and "guard" not in m and "tts" not in m]
     except Exception:
         kandidat = daftar_model
 
-    response = None
+    hasil_json = None
     error_terakhir = None
     for nama_model in kandidat:
         try:
@@ -284,17 +292,19 @@ def jalankan_audit_ai(fokus_audit):
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,
-                response_format={"type": "json_object"}
+                max_tokens=4096
             )
+            konten = response.choices[0].message.content
+            hasil_json = ekstrak_json_aman(konten)
             break
         except Exception as err:
             error_terakhir = err
             continue
 
-    if response is None:
+    if hasil_json is None:
         raise Exception(f"Semua model gagal dipanggil. Detail: {error_terakhir}")
 
-    return json.loads(response.choices[0].message.content)
+    return hasil_json
 
 def tampilkan_hasil_audit(hasil, judul_laporan):
     st.divider()
@@ -325,7 +335,7 @@ def tampilkan_hasil_audit(hasil, judul_laporan):
     st.markdown("### 📋 Keputusan Audit & Laporan Final")
 
     if terdapat_temuan or len(daftar_temuan) > 0:
-        st.warning("⚠️ **Status Percabangan: TERDAPAT TEMUAN (Ya)**")
+        st.warning(f"⚠️ **Status Percabangan: TERDAPAT TEMUAN ({len(daftar_temuan)} Temuan Terdeteksi)**")
         st.subheader("📌 Rincian Temuan Kesalahan & Rekomendasi")
         for idx, item in enumerate(daftar_temuan, 1):
             kategori = item.get("kategori_kesalahan", "Temuan Audit")
