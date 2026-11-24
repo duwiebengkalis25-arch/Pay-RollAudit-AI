@@ -256,16 +256,45 @@ def jalankan_audit_ai(fokus_audit):
 
     user_prompt = f"{aturan_tambahan}\n\nDATA PAYROLL KARYAWAN:\n{payroll_csv_str}"
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"}
-    )
-    return json.loads(response.choices[0].message.content)
+   # Daftar model aktif Groq yang mendukung analisis terstruktur (JSON)
+daftar_model = [
+    "llama-3.1-8b-instant",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "qwen/qwen3-32b",
+    "openai/gpt-oss-120b"
+]
+
+# Mengambil model yang aktif langsung dari akun Groq Anda jika tersedia
+try:
+    model_tersedia = [m.id for m in client.models.list().data]
+    kandidat = [m for m in daftar_model if m in model_tersedia]
+    if not kandidat and model_tersedia:
+        kandidat = [m for m in model_tersedia if "whisper" not in m and "guard" not in m]
+except Exception:
+    kandidat = daftar_model
+
+response = None
+error_terakhir = None
+for nama_model in kandidat:
+    try:
+        response = client.chat.completions.create(
+            model=nama_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+        break
+    except Exception as err:
+        error_terakhir = err
+        continue
+
+if response is None:
+    raise Exception(f"Semua model gagal dipanggil. Detail: {error_terakhir}")
+
+return json.loads(response.choices[0].message.content)
 
 def tampilkan_hasil_audit(hasil, judul_laporan):
     st.divider()
