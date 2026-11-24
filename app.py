@@ -196,7 +196,9 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Fungsi Helper Pembaca File & Panggil AI
+# ==========================================
+# FUNGSI HELPER PEMBACA FILE & PROSES AI
+# ==========================================
 def extract_payroll_data(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
@@ -240,7 +242,7 @@ def jalankan_audit_ai(fokus_audit):
         "ringkasan_lembur": "Hasil audit perhitungan jam & upah lembur",
         "ringkasan_potongan": "Hasil audit komponen potongan & gaji bersih",
         "ringkasan_pembayaran_tidak_sesuai": "Hasil deteksi anomali, duplikasi, atau pembayaran tidak wajar",
-        "terdapat_temuan": true atau false,
+        "terdapat_temuan": true,
         "daftar_temuan": [
             {{
                 "karyawan_atau_id": "Nama / ID Karyawan",
@@ -298,39 +300,57 @@ def tampilkan_hasil_audit(hasil, judul_laporan):
     st.divider()
     st.markdown("### ⚙️ Hasil Proses Analisis Audit AI")
     
+    ringkasan_gaji = hasil.get("ringkasan_gaji_tunjangan", "Data gaji pokok dan tunjangan telah diperiksa.")
+    ringkasan_lembur = hasil.get("ringkasan_lembur", "Perhitungan jam dan upah lembur telah diperiksa.")
+    ringkasan_potongan = hasil.get("ringkasan_potongan", "Komponen potongan wajib, absensi, dan gaji bersih telah diperiksa.")
+    ringkasan_anomali = hasil.get("ringkasan_pembayaran_tidak_sesuai", "Pemindaian duplikasi dan kewajaran pembayaran telah dijalankan.")
+    terdapat_temuan = hasil.get("terdapat_temuan", False)
+    daftar_temuan = hasil.get("daftar_temuan") or hasil.get("daftar_temuan_rekomendasi") or []
+    laporan_final = (
+        hasil.get("laporan_audit_final")
+        or hasil.get("kesimpulan_laporan_final")
+        or hasil.get("kesimpulan")
+        or "Audit telah selesai dijalankan. Silakan tinjau rincian temuan di atas untuk tindakan koreksi lebih lanjut."
+    )
+
     c1, c2 = st.columns(2)
     with c1:
-        st.info(f"**💰 Audit Gaji Pokok & Tunjangan:**\n\n{hasil['ringkasan_gaji_tunjangan']}")
-        st.info(f"**✂️ Audit Potongan & Gaji Bersih:**\n\n{hasil['ringkasan_potongan']}")
+        st.info(f"**💰 Audit Gaji Pokok & Tunjangan:**\n\n{ringkasan_gaji}")
+        st.info(f"**✂️ Audit Potongan & Gaji Bersih:**\n\n{ringkasan_potongan}")
     with c2:
-        st.info(f"**⏱️ Audit Perhitungan Lembur:**\n\n{hasil['ringkasan_lembur']}")
-        st.info(f"**🚨 Deteksi Pembayaran Tidak Sesuai:**\n\n{hasil['ringkasan_pembayaran_tidak_sesuai']}")
+        st.info(f"**⏱️ Audit Perhitungan Lembur:**\n\n{ringkasan_lembur}")
+        st.info(f"**🚨 Deteksi Pembayaran Tidak Sesuai:**\n\n{ringkasan_anomali}")
 
     st.divider()
     st.markdown("### 📋 Keputusan Audit & Laporan Final")
 
-    if hasil["terdapat_temuan"]:
+    if terdapat_temuan or len(daftar_temuan) > 0:
         st.warning("⚠️ **Status Percabangan: TERDAPAT TEMUAN (Ya)**")
         st.subheader("📌 Rincian Temuan Kesalahan & Rekomendasi")
-        for idx, item in enumerate(hasil["daftar_temuan"], 1):
+        for idx, item in enumerate(daftar_temuan, 1):
+            kategori = item.get("kategori_kesalahan", "Temuan Audit")
+            karyawan = item.get("karyawan_atau_id") or item.get("karyawan_atau_item") or f"Item #{idx}"
+            detail = item.get("detail_temuan") or item.get("jenis_kesalahan_risiko") or "-"
+            rekom = item.get("rekomendasi", "Lakukan verifikasi dan penyesuaian nominal pada sistem payroll.")
+
             st.markdown(f"""
                 <div class="card-box" style="border-left: 5px solid #ef4444;">
                     <span style="background:#fee2e2; color:#b91c1c; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:700;">
-                        {item['kategori_kesalahan']}
+                        {kategori}
                     </span>
-                    <h4 style="margin:8px 0 6px 0; color:#102a43;">Temuan #{idx} — {item['karyawan_atau_id']}</h4>
-                    <p style="margin-bottom:6px;"><b>Detail Kesalahan / Selisih:</b> {item['detail_temuan']}</p>
-                    <p style="margin-bottom:0; color:#047857;"><b>Rekomendasi Perbaikan:</b> {item['rekomendasi']}</p>
+                    <h4 style="margin:8px 0 6px 0; color:#102a43;">Temuan #{idx} — {karyawan}</h4>
+                    <p style="margin-bottom:6px;"><b>Detail Kesalahan / Selisih:</b> {detail}</p>
+                    <p style="margin-bottom:0; color:#047857;"><b>Rekomendasi Perbaikan:</b> {rekom}</p>
                 </div>
             """, unsafe_allow_html=True)
 
         st.subheader("📄 Laporan Audit Final (Disertai Rekomendasi)")
-        st.error(hasil["laporan_audit_final"])
+        st.error(laporan_final)
         status_teks = "TERDAPAT TEMUAN KESALAHAN / PEMBAYARAN TIDAK SESUAI"
     else:
         st.success("✅ **Status Percabangan: DATA DINYATAKAN SESUAI (Tidak Ada Masalah)**")
         st.subheader("📄 Laporan Audit Final (Status: Aman)")
-        st.success(hasil["laporan_audit_final"])
+        st.success(laporan_final)
         status_teks = "AMAN / DATA DINYATAKAN SESUAI"
 
     laporan_txt = f"""====================================================
@@ -340,19 +360,19 @@ Auditor       : {st.session_state.username}
 Status Akhir  : {status_teks}
 
 1. AUDIT GAJI POKOK & TUNJANGAN
-{hasil['ringkasan_gaji_tunjangan']}
+{ringkasan_gaji}
 
 2. AUDIT PERHITUNGAN LEMBUR
-{hasil['ringkasan_lembur']}
+{ringkasan_lembur}
 
 3. AUDIT POTONGAN & GAJI BERSIH
-{hasil['ringkasan_potongan']}
+{ringkasan_potongan}
 
 4. DETEKSI PEMBAYARAN TIDAK SESUAI
-{hasil['ringkasan_pembayaran_tidak_sesuai']}
+{ringkasan_anomali}
 
 5. KESIMPULAN LAPORAN AUDIT FINAL
-{hasil['laporan_audit_final']}
+{laporan_final}
 ====================================================
 """
     st.download_button(
